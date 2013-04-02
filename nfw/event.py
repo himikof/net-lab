@@ -24,8 +24,15 @@ class Event(object):
             callback(*args, **kwargs)
     
     @inlineCallbacks
-    def waitFor(self):
+    def waitFor0(self):
         d = Deferred()
         s = self.subscribe(d.callback, None)
+        yield d
+        self.unsubscibe(s)
+
+    @inlineCallbacks
+    def waitFor1(self):
+        d = Deferred()
+        s = self.subscribe(d.callback)
         yield d
         self.unsubscibe(s)

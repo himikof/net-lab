@@ -48,6 +48,11 @@ class Buffer(object):
         self.requests.append((d, length))
         self._handle()
         return d
+    
+    def flush(self):
+        data = bytearray(self.data)
+        self.clear()
+        return data
 
     def __len__(self):
         return len(self.data)
@@ -64,13 +69,19 @@ class ConstBuffer(object):
         self.data = data
         self.offset = 0
         
-    def pop(self, length):
+    def _pop(self, length):
         new_offset = self.offset + length 
         if new_offset > len(self.data):
             raise BufferUnderflowException('ConstBuffer underflow')
         result = self.data[self.offset : new_offset]
         self.offset = new_offset
-        return defer.succeed(result)
+        return result
+
+    def pop(self, length):
+        return defer.succeed(self._pop(length))
+    
+    def flush(self):
+        return self._pop(len(self))
 
     def __len__(self):
         return len(self.data) - self.offset

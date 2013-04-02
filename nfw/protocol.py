@@ -19,32 +19,66 @@ from nfw.codec import ReaderMixin, WriterMixin
 
 _log = logging.getLogger(__name__)
 
+class ProtocolException(Exception):
+    pass
+
 class StateMixin(object):
     def __init__(self):
         super(StateMixin, self).__init__()
         self.deferred = None
+        self.stateMachineStopped = False
         
     def _startSM(self):
+        if self.stateMachineStopped:
+            return
         self.deferred = self.stateMachine()
         if self.deferred is None:
             self.deferred = defer.Deferred()
         self.deferred.addCallbacks(lambda v: self._startSM(), self.protocolError)
-    
-
-class BufferedProtocol(WriterMixin, ReaderMixin, object, Protocol):
-    def __init__(self):
-        super(BufferedProtocol, self).__init__()
-        self.buffer = Buffer()
         
+    def _stopSM(self):
+        self.stateMachineStopped = True
+
+
+class BufferMixin(object):
+    def __init__(self):
+        self.buffer = Buffer()        
+
     def clearBuffer(self):
         self.buffer.clear()
+        
+    def flushBuffer(self):
+        return self.buffer.flush()
 
+
+class SwitchingMixin(BufferMixin):
+    def __init__(self):
+        super(SwitchingMixin, self).__init__(self)
+        self.nestedProtocol = None
+    
+    def _switchProtocol(self, nestedProtocolFactory):
+        self.nestedProtocol = nestedProtocolFactory.\
+            buildProtocol(self.transport.getPeer())
+        _log.info('Switching protocol to %s', self.nestedProtocol)
+        newData = self.flushBuffer()
+        self.nestedProtocol.makeConnection(self.transport)
+        if len(newData):
+            self.nestedProtocol.dataReceived(newData)
+
+
+class BufferedProtocol(BufferMixin, WriterMixin, ReaderMixin, object, Protocol):
+    def __init__(self):
+        super(BufferedProtocol, self).__init__()
+        
     def dataReceived(self, data):
         self.buffer.extend(data)
         
     def connectionLost(self, reason):
-        self.buffer.clear()
+        self.clearBuffer()
 
+    def readBytes(self, count):
+        return self.buffer.pop(count)
+    
     def writeBytes(self, data):
         self.transport.write(data)
     
@@ -70,8 +104,32 @@ class StatefulProtocol(StateMixin, BufferedProtocol):
             self._startSM()
             
 
+class StatefulSwitchingProtocol(SwitchingMixin, StatefulProtocol):
+    def connectionMade(self):
+        if self.nestedProtocol is not None:
+            return self.nestedProtocol.connectionMade()
+        super(StatefulSwitchingProtocol, self).connectionMade()
+        self._startSM()
+        
+    def connectionLost(self, reason):
+        if self.nestedProtocol is not None:
+            return self.nestedProtocol.connectionLost(reason)
+        super(StatefulSwitchingProtocol, self).connectionLost(reason)
+
+    def dataReceived(self, data):
+        if self.nestedProtocol is not None:
+            return self.nestedProtocol.dataReceived(data)
+        super(StatefulSwitchingProtocol, self).dataReceived(data)
+        if self.deferred is None:
+            self._startSM()
+    
+    def switchProtocol(self, nestedProtocolFactory):
+        self._stopSM()
+        self._switchProtocol(nestedProtocolFactory)
+
+
 class StatefulDatagramProtocol(WriterMixin, ReaderMixin, StateMixin, 
-                               DatagramProtocol):
+                               object, DatagramProtocol):
     __metaclass__ = ABCMeta
     
     def __init__(self):
@@ -97,6 +155,9 @@ class StatefulDatagramProtocol(WriterMixin, ReaderMixin, StateMixin,
     def receiveDatagram(self):
         return self.datagramDeferred
 
+    def readBytes(self, count):
+        return self.buffer.pop(count)
+    
     def writeBytes(self, data):
         self.writeBuffer.extend(data)
 

@@ -15,11 +15,11 @@ from twisted.python import log as txlog
 import logging
 import tempfile
 
-import broadcaster
-import storageserver
-import netdb
-import content
-import web
+from storage import broadcaster
+from storage import storageserver
+from storage import netdb
+from storage import content
+from storage import web
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
