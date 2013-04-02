@@ -46,3 +46,6 @@ class Host(object):
             raise ValueError("Time stamp can only be incremented")
         self._timestamp = timestamp
         self._cname = newName
+
+    def __repr__(self):
+        return str(self.__dict__)

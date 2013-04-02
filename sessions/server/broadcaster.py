@@ -105,8 +105,8 @@ peerSeen = Event()
 def setup(sessionPort):
     global peerlist
     peerlist = PeerList()
-    host = socket.gethostname()
-    br = Broadcaster(peerlist, host, sessionPort)
+    host = socket.gethostbyname(socket.gethostname())
+    br = Broadcaster(host, sessionPort)
     #reactor.listenUDP(9999, br) #@UndefinedVariable
     reactor.listenMulticast(9999, br, listenMultiple=True) #@UndefinedVariable
     l = task.LoopingCall(br.sendDatagram)

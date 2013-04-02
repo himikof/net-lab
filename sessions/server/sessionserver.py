@@ -15,30 +15,35 @@ from nfw.protocol import StatefulSwitchingProtocol
 
 from sessions.server.session import parseKey
 from sessions.server import hostdb, sessiondb
-from sessions.server import replication
+from sessions.server.replication import factory as rf
 
 _log = logging.getLogger(__name__)
 
 class ServerProtocol(StatefulSwitchingProtocol):
-    
+
     def __init__(self, sessiondb, hostdb):
         super(ServerProtocol, self).__init__()
         self.sessiondb = sessiondb
         self.hostdb = hostdb
-        
+
     @inlineCallbacks
     def stateMachine(self):
+        _log.info("ENTERING SM: %s", self.transport.getPeer())
         command = yield self.readUInt8()
+        #import pdb; pdb.set_trace()
         if command == 0x00:
+            _log.info("got SESSION_REQUEST: buffer=%s", self.buffer.data)
+            src_ip = self.transport.getPeer().host
+            _log.info("SESSION_REQUEST: src_ip=%s", src_ip)
+            src_cname = yield self.readString8()
+            dest_ip = yield self.readString8()
+            _log.info("SESSION_REQUEST: dest_ip=%s, src_cname=%s", dest_ip, src_cname)
             try:
-                _log.info("got SESSION_REQUEST")
-                src_ip = self.transport.getPeer().host
-                src_cname = yield self.readString8()
-                dest_ip = yield self.readString8()
                 source = self.hostdb.validateHost(src_ip, src_cname)
-                destination = self.hostdb.validateHost(dest_ip)
+                destination = self.hostdb.queryHost(dest_ip)
                 session = self.sessiondb.requestSession(source, destination)
-            except Exception:
+            except Exception as e:
+                _log.error(e)
                 _log.info("sending SESSION_REJ")
                 self.writeUInt8(0x01)
                 self.writeString8(dest_ip)
@@ -48,11 +53,11 @@ class ServerProtocol(StatefulSwitchingProtocol):
                 self.writeBinary8(session.binaryKey())
                 self.writeString8(dest_ip)
         elif command == 0x01:
+            _log.info("got SESSION_CHECK")
+            sid = yield self.readBinary8()
+            dest_ip = self.transport.getPeer().host
+            dest_cname = yield self.readString8()
             try:
-                _log.info("got SESSION_CHECK")
-                sid = yield self.readBinary8()
-                dest_ip = self.transport.getPeer().host
-                dest_cname = yield self.readString8()
                 destination = self.hostdb.validateHost(dest_ip, dest_cname)
                 sessionKey = parseKey(sid)
                 self.sessiondb.validateSession(sessionKey, destination)
@@ -64,13 +69,19 @@ class ServerProtocol(StatefulSwitchingProtocol):
                 _log.info("sending SESSION_VALID")
                 self.writeUInt8(0x02)
                 self.writeBinary8(sid)
-        elif command == 0x2:
+        elif command == 0x02:
             _log.info("got SERVER_ID, upgrading to s2s")
             # TODO: implement
             serverId = yield self.readString8()
-            self.switchProtocol(replication.server.serverFactory)
+            self.switchProtocol(rf.ServerFactory(serverId))
             # Nothing should be done here, after the switch
+        elif command == 0x03:
+            _log.info("got SERVER_ADMIN_CS, disconnecting client")
+            self.disconnect()
+            #_log.info("buffer: %s", self.buffer.requests)
+            #import pdb; pdb.set_trace()
         else:
+            import pdb; pdb.set_trace()
             raise RuntimeError('Bad command')
 
 

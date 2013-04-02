@@ -14,8 +14,9 @@ from twisted.internet.defer import Deferred
 from twisted.internet.protocol import Protocol, DatagramProtocol
 from twisted.python import log as txlog
 
-from nfw.buffer import Buffer, ConstBuffer
+from nfw.buffer import Buffer, ConstBuffer, BufferClearedException
 from nfw.codec import ReaderMixin, WriterMixin
+from nfw.event import Event
 
 _log = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ class StateMixin(object):
         super(StateMixin, self).__init__()
         self.deferred = None
         self.stateMachineStopped = False
-        
+
     def _startSM(self):
         if self.stateMachineStopped:
             return
@@ -35,7 +36,7 @@ class StateMixin(object):
         if self.deferred is None:
             self.deferred = defer.Deferred()
         self.deferred.addCallbacks(lambda v: self._startSM(), self.protocolError)
-        
+
     def _stopSM(self):
         self.stateMachineStopped = True
 
@@ -53,7 +54,7 @@ class BufferMixin(object):
 
 class SwitchingMixin(BufferMixin):
     def __init__(self):
-        super(SwitchingMixin, self).__init__(self)
+        super(SwitchingMixin, self).__init__()
         self.nestedProtocol = None
     
     def _switchProtocol(self, nestedProtocolFactory):
@@ -64,6 +65,26 @@ class SwitchingMixin(BufferMixin):
         self.nestedProtocol.makeConnection(self.transport)
         if len(newData):
             self.nestedProtocol.dataReceived(newData)
+
+
+class SignalingMixin(object):
+    def __init__(self, *args, **kwargs):
+        super(SignalingMixin, self).__init__(*args, **kwargs)
+        self.dataEvent = Event()
+        self.disconnectEvent = Event()
+        self.connectEvent = Event()
+
+    def dataReceived(self, data):
+        self.dataEvent.fire(data)
+        super(SignalingMixin, self).dataReceived(data)
+
+    def connectionLost(self, reason):
+        self.disconnectEvent.fire(reason)
+        super(SignalingMixin, self).connectionLost(reason)
+
+    def connectionMade(self):
+        self.connectEvent.fire()
+        super(SignalingMixin, self).connectionMade()
 
 
 class BufferedProtocol(BufferMixin, WriterMixin, ReaderMixin, object, Protocol):
@@ -91,8 +112,19 @@ class StatefulProtocol(StateMixin, BufferedProtocol):
         return defer.Deferred()
 
     def protocolError(self, failure):
-        txlog.err(failure)
+        _log.info('protocolError')
+        if not failure.check('twisted.python.failure.DefaultException'):
+            #import pdb; pdb.set_trace()
+            txlog.err(failure)
+        self.disconnect()
+
+    def disconnect(self):
         self.transport.loseConnection()
+        self._stopSM()
+
+    def connectionLost(self, reason):
+        self._stopSM()
+        super(StatefulProtocol, self).connectionLost(reason)
 
     def connectionMade(self):
         super(StatefulProtocol, self).connectionMade()
@@ -109,8 +141,8 @@ class StatefulSwitchingProtocol(SwitchingMixin, StatefulProtocol):
         if self.nestedProtocol is not None:
             return self.nestedProtocol.connectionMade()
         super(StatefulSwitchingProtocol, self).connectionMade()
-        self._startSM()
-        
+        #self._startSM()
+
     def connectionLost(self, reason):
         if self.nestedProtocol is not None:
             return self.nestedProtocol.connectionLost(reason)

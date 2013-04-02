@@ -9,6 +9,9 @@ import collections
 from twisted.internet import defer
 from twisted.python.failure import Failure
 
+class BufferClearedException(Exception):
+    pass
+
 class Buffer(object):
     '''
     A simple lazy buffer class for queuing data. It is a queue of bytes.

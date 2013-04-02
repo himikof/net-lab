@@ -38,9 +38,23 @@ class HostDB(object):
         if not h.isAllowed:
             raise DatabaseException("Forbidden host {0}".format(h))
         return h
-    
+
+    def readKey(self, key):
+        return key.address
+
+    def merge(self, key, data):
+        timestamp = data.timestamp / 1000.0
+        if key not in self.hosts:
+            self.hosts[key] = Host(key, timestamp, data.name, data.valid)
+            _log.debug("Importing host: %s", self.hosts[key])
+        else:
+            if data.HasField('name'):
+                self.hosts[key].setName(timestamp, data.name)
+            if data.HasField('valid'):
+                self.hosts[key].setAllowed(timestamp, data.valid)
+
     def merger(self):
-        return Merger(self.hosts)
+        return Merger(self.hosts, self.readKey, self.merge)
 
 db = None
 

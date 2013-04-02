@@ -12,8 +12,9 @@ from nfw.expire import AbstractExpiringDict
 from nfw.event import Event
 from nfw.reconnect import PersistentClientService
 
-from sessions.server import broadcaster, replication
+from sessions.server import broadcaster
 from sessions.server import sessiondb, hostdb
+from sessions.server.replication.factory import ClientFactory
 
 from twisted.internet import reactor
 from twisted.internet.endpoints import TCP4ClientEndpoint
@@ -24,10 +25,11 @@ _log = logging.getLogger(__name__)
 PeerKey = namedtuple('PeerKey', ['host', 'port'])
 
 class Peer(object):
-    def __init__(self, host, port, timestamp):
+    def __init__(self, host, port, timestamp, serverId=None):
         self.host = host
         self.port = port
         self.timestamp = timestamp
+        self.serverId = serverId
 
     def key(self):
         return PeerKey(self.host, self.port)
@@ -46,14 +48,14 @@ class Peer(object):
 
 PEER_FORGET_DELAY = 15.0
 
-class PeerList(dict, object):
+class OutPeerList(dict, object):
     def __init__(self, connectionMadeCallback=None):
         self.connectionMadeCallback = connectionMadeCallback
         self.expirations = {}
-        
+
     def addPeer(self, peer):
         key = peer.key()
-        factory = replication.client.StorageClientFactory()
+        factory = ClientFactory()
         def _onConnectionLost(reason):
             self.peerConnectionLost(peer)
         def _onConnectionMade():
@@ -73,48 +75,79 @@ class PeerList(dict, object):
             service = self.pop(key)
             service.stopService()
             del self.expirations[key]
-        dc = reactor.callLater(PEER_FORGET_DELAY, #@UndefinedVariable 
-                               _expirePeer) 
+        dc = reactor.callLater(PEER_FORGET_DELAY, #@UndefinedVariable
+                               _expirePeer)
         self.expirations[key] = dc
 
     def peerConnectionLost(self, peer):
         self._peerScheduleExpiration(peer)
-    
+
     def peerProtocol(self, peer):
         return self[peer.key()].connectedProtocol()
 
 
 class Replicator(object):
     def __init__(self):
-        self.outPeers = PeerList()
+        self.outPeers = OutPeerList()
+        self.inPeers = {}
+        self.peers = {}
         self.sessionMerger = sessiondb.db.merger()
         self.hostMerger = hostdb.db.merger()
         #for peer in broadcaster.peerlist.values():
         #    self.updatePeer(peer)
-        broadcaster.peerSeen.subscribe(self.refreshPeer)
+        broadcaster.peerSeen.subscribe(self.connectToPeer)
 
     @inlineCallbacks
-    def refreshPeer(self, peer):
-        if peer.key() in self.outPeers:
-            return
-        protocol = yield self.outPeers.addPeer(peer)
-        (sessionUpdates, hostUpdates) = yield protocol.list()
-        sessionUpdates = self.sessionMerger.process(sessionUpdates)
-        hostUpdates = self.hostMerger.process(hostUpdates)
-        protocol.sendList((sessionUpdates, hostUpdates))
+    def registerProtocol(self, protocol):
+        serverId = yield protocol.remoteServerId()
+        if serverId not in self.peers:
+            self.peers[serverId] = set()
+        self.peers[serverId].add(protocol)
+        def onDisconnect(reason):
+            self.peers[serverId].remove(protocol)
+            if not self.peers[serverId]:
+                del self.peers[serverId]
+        protocol.disconnectEvent.subscribe(onDisconnect)
+        protocol.onUpdate.subscribe(self.processUpdates)
+        self.refresh(protocol)
 
-    def addInPeer(self, peer, protocol):
+    def addIncomingPeer(self, peer, protocol):
+        serverId = peer.serverId
+        if serverId is None:
+            raise ValueError("Unknown serverId on incoming peer")
+        def onDisconnect(reason):
+            del self.inPeers[protocol]
+        protocol.disconnectEvent.subscribe(onDisconnect)
+        self.inPeers[protocol] = peer
+        self.registerProtocol(protocol)
+
+    @inlineCallbacks
+    def refresh(self, protocol):
+        _log.info("Ignoring refresh request for now...")
+        return
+        yield protocol.list()
+
+    def sendUpdates(self, updates):
         pass
 
-    @inlineCallbacks
-    def updatePeer(self, peer):
-        _log.info('Updating peer %s', peer.key())
-        client = yield replication.client.connect(peer.endpoint())
-        (sessionUpdates, hostUpdates) = yield client.list()
+    def processUpdates(self, updates):
+        _log.debug("Processing updates...")
+        (sessionUpdates, hostUpdates) = updates
         sessionUpdates = self.sessionMerger.process(sessionUpdates)
         hostUpdates = self.hostMerger.process(hostUpdates)
-        client.sendList((sessionUpdates, hostUpdates))
-        _log.info('Updated from peer %s', peer.key())
+        self.sendUpdates((sessionUpdates, hostUpdates))
+
+    @inlineCallbacks
+    def connectToPeer(self, peer):
+        if peer.key() in self.outPeers:
+            return
+        _log.info('Connecting to peer %s', peer.key())
+        protocol = yield self.outPeers.addPeer(peer)
+        self.registerProtocol(protocol)
+        _log.info('Outgoing peer %s ready', peer.key())
+
+replicator = None
 
 def setup():
-    pass
+    global replicator
+    replicator = Replicator()

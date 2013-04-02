@@ -19,7 +19,7 @@ from twisted.internet.defer import inlineCallbacks
 _log = logging.getLogger(__name__)
 
 class SessionList(AbstractExpiringDict):
-    @inlineCallbacks
+    #@inlineCallbacks
     def expire(self, sessionKey):
         _log.info('Trying to expire')
         s = self[sessionKey]
@@ -30,6 +30,8 @@ class SessionList(AbstractExpiringDict):
         return None
     
     def ttl(self, sessionKey):
+        _log.debug("TTL: %s, %s, %s", self[sessionKey].validUntil, time.time(),
+         self[sessionKey].validUntil - time.time())
         return max(self[sessionKey].validUntil - time.time(), 0)
 
 class SessionDB(object):
@@ -56,8 +58,24 @@ class SessionDB(object):
                                     "{1}".format(destination, s))
         return True
 
+    def readKey(self, key):
+        return SessionKey(server=key.serverId, uuid=uuid.UUID(key.sessionId))
+
+    def merge(self, key, data):
+        timestamp = data.timestamp / 1000.0
+        validUntil = data.validUntil / 1000.0
+        if key not in self.sessions:
+            session = Session(key, timestamp,
+                              data.sessionSource, data.sessionDest,
+                              validUntil)
+            _log.debug("Importing session: %s", session)
+            self.sessions[key] = session
+        else:
+            if data.HasField('validUntil'):
+                self.sessions[key].prolong(timestamp, validUntil)
+
     def merger(self):
-        return Merger(self.sessions)
+        return Merger(self.sessions, self.readKey, self.merge)
 
 
 db = None

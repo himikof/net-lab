@@ -63,3 +63,6 @@ class Session(object):
             raise ValueError("Expiration time can only be incremented")
         self._timestamp = timestamp
         self._validUntil = newValidUntil
+
+    def __repr__(self):
+        return str(self.__dict__)

@@ -4,30 +4,48 @@ Created on 27.03.2013
 @author: Nikita Ofitserov
 '''
 
+import logging
+
 from twisted.application import service
 from twisted.internet import defer
 from twisted.protocols.policies import ProtocolWrapper, WrappingFactory
 
-class SignalingProtocol(ProtocolWrapper):
-    def connectionMade(self):
-        ProtocolWrapper.connectionMade(self)
-        if self.factory.onConnectionMade:
-            self.factory.onConnectionMade()
+from nfw.protocol import SignalingMixin
 
-    def connectionLost(self, reason):
-        ProtocolWrapper.connectionLost(self, reason)
-        if self.factory.onConnectionLost:
-            self.factory.onConnectionLost(reason)
+_log = logging.getLogger(__name__)
 
-    
+class SignalingProtocol(SignalingMixin, object, ProtocolWrapper):
+    def __init__(self, factory, wrappedProtocol):
+        super(SignalingProtocol, self).__init__()
+        ProtocolWrapper.__init__(self, factory, wrappedProtocol)
+        
+    def __getattr__(self, name):
+        return getattr(self.wrappedProtocol, name)
+        
+#    def connectionMade(self):
+#        ProtocolWrapper.connectionMade(self)
+#        if self.factory.onConnectionMade:
+#            self.factory.onConnectionMade()
+#
+#    def connectionLost(self, reason):
+#        ProtocolWrapper.connectionLost(self, reason)
+#        if self.factory.onConnectionLost:
+#            self.factory.onConnectionLost(reason)
+
+
 class SignalingFactory(WrappingFactory):
-        def __init__(self, wrappedFactory, onConnectionMade,
-                     onConnectionLost):
-            WrappingFactory.__init__(self, wrappedFactory)
-            self.onConnectionMade = onConnectionMade
-            self.onConnectionLost = onConnectionLost
+#        def __init__(self, wrappedFactory, onConnectionMade,
+#                     onConnectionLost):
+#            WrappingFactory.__init__(self, wrappedFactory)
+#            self.onConnectionMade = onConnectionMade
+#            self.onConnectionLost = onConnectionLost
     
-        protocol = SignalingProtocol
+    protocol = SignalingProtocol
+        
+    def buildProtocol(self, addr):
+        p = WrappingFactory.buildProtocol(self, addr)
+        _log.debug("Built SignalingProtocol: %s", p)
+        return p
 
 
 class PersistentClientService(service.Service):
@@ -49,8 +67,7 @@ class PersistentClientService(service.Service):
     def __init__(self, endpoint, factory, reactor, 
                  nextDelay=DEFAULT_DELAY, connectionLostCallback=None):
         self.endpoint = endpoint
-        self.factory = SignalingFactory(factory, None,
-                                        self._onConnectionLost)
+        self.factory = SignalingFactory(factory)
         self._reactor = reactor
         self._nextDelay = nextDelay
         self._dConnectingProtocol = None
@@ -59,8 +76,8 @@ class PersistentClientService(service.Service):
         self._connectionLostCallback = connectionLostCallback
 
     def startService(self):
-        self._startConnection()
         service.Service.startService(self)
+        self._startConnection()
         
     def stopService(self):
         if self._currentProtocol:
@@ -71,6 +88,7 @@ class PersistentClientService(service.Service):
         if not self.running:
             return
         assert not self._dConnectingProtocol, self._dConnectingProtocol
+        #import pdb; pdb.set_trace()
         self._dConnectingProtocol = self.endpoint.connect(self.factory)
         (self._dConnectingProtocol
             .addCallback(self._onConnect))
@@ -83,6 +101,7 @@ class PersistentClientService(service.Service):
         #self._startConnection()
 
     def _onConnect(self, protocol):
+        protocol.disconnectEvent.subscribe(self._onConnectionLost)
         self._dConnectingProtocol = None
         self._currentProtocol = protocol
         subscribers = self._subscribers

@@ -70,6 +70,7 @@ class AbstractExpiringDict(MutableMapping, object):
     def __setitem__(self, key, value):
         if key in self:
             del self[key]
+        self.data[key] = (value, None)
         ttl = self.ttl(key)
         expireD = self.reactor.callLater(ttl, self._do_expire, key)
         self.data[key] = (value, expireD)
