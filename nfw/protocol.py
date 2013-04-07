@@ -43,11 +43,11 @@ class StateMixin(object):
 
 class BufferMixin(object):
     def __init__(self):
-        self.buffer = Buffer()        
+        self.buffer = Buffer()
 
     def clearBuffer(self):
         self.buffer.clear()
-        
+
     def flushBuffer(self):
         return self.buffer.flush()
 
@@ -56,7 +56,7 @@ class SwitchingMixin(BufferMixin):
     def __init__(self):
         super(SwitchingMixin, self).__init__()
         self.nestedProtocol = None
-    
+
     def _switchProtocol(self, nestedProtocolFactory):
         self.nestedProtocol = nestedProtocolFactory.\
             buildProtocol(self.transport.getPeer())
@@ -90,19 +90,19 @@ class SignalingMixin(object):
 class BufferedProtocol(BufferMixin, WriterMixin, ReaderMixin, object, Protocol):
     def __init__(self):
         super(BufferedProtocol, self).__init__()
-        
+
     def dataReceived(self, data):
         self.buffer.extend(data)
-        
+
     def connectionLost(self, reason):
         self.clearBuffer()
 
     def readBytes(self, count):
         return self.buffer.pop(count)
-    
+
     def writeBytes(self, data):
         self.transport.write(data)
-    
+
 
 class StatefulProtocol(StateMixin, BufferedProtocol):
     __metaclass__ = ABCMeta
@@ -134,7 +134,7 @@ class StatefulProtocol(StateMixin, BufferedProtocol):
         super(StatefulProtocol, self).dataReceived(data)
         if self.deferred is None:
             self._startSM()
-            
+
 
 class StatefulSwitchingProtocol(SwitchingMixin, StatefulProtocol):
     def connectionMade(self):
@@ -154,16 +154,16 @@ class StatefulSwitchingProtocol(SwitchingMixin, StatefulProtocol):
         super(StatefulSwitchingProtocol, self).dataReceived(data)
         if self.deferred is None:
             self._startSM()
-    
+
     def switchProtocol(self, nestedProtocolFactory):
         self._stopSM()
         self._switchProtocol(nestedProtocolFactory)
 
 
-class StatefulDatagramProtocol(WriterMixin, ReaderMixin, StateMixin, 
+class StatefulDatagramProtocol(WriterMixin, ReaderMixin, StateMixin,
                                object, DatagramProtocol):
     __metaclass__ = ABCMeta
-    
+
     def __init__(self):
         super(StatefulDatagramProtocol, self).__init__()
         self.datagramDeferred = Deferred()
@@ -189,7 +189,7 @@ class StatefulDatagramProtocol(WriterMixin, ReaderMixin, StateMixin,
 
     def readBytes(self, count):
         return self.buffer.pop(count)
-    
+
     def writeBytes(self, data):
         self.writeBuffer.extend(data)
 

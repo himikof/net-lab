@@ -23,14 +23,20 @@ class Buffer(object):
         '''
         self.data = collections.deque()
         self.requests = collections.deque()
-    
+
     def extend(self, data):
         self.data.extend(data)
+        #import pdb; pdb.set_trace()
         while self._handle():
             pass
-        
+
     def clear(self):
         for deferred, _ in self.requests:
+            #import pdb; pdb.set_trace()
+            @defer.inlineCallbacks
+            def capture():
+                raise BufferClearedException('Buffer cleared')
+            #capture().chainDeferred(deferred)
             deferred.errback(Failure('Buffer cleared'))
         self.requests.clear()
         self.data.clear()
@@ -48,10 +54,11 @@ class Buffer(object):
 
     def pop(self, length):
         d = defer.Deferred()
+        #import pdb; pdb.set_trace()
         self.requests.append((d, length))
         self._handle()
         return d
-    
+
     def flush(self):
         data = bytearray(self.data)
         self.clear()
@@ -71,9 +78,9 @@ class ConstBuffer(object):
     def __init__(self, data):
         self.data = data
         self.offset = 0
-        
+
     def _pop(self, length):
-        new_offset = self.offset + length 
+        new_offset = self.offset + length
         if new_offset > len(self.data):
             raise BufferUnderflowException('ConstBuffer underflow')
         result = self.data[self.offset : new_offset]
@@ -82,7 +89,7 @@ class ConstBuffer(object):
 
     def pop(self, length):
         return defer.succeed(self._pop(length))
-    
+
     def flush(self):
         return self._pop(len(self))
 

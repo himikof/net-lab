@@ -14,17 +14,17 @@ class Host(object):
         self._timestamp = timestamp
         self._cname = cname
         self._allowed = allowed
-        
+
     @property
     def key(self):
         """Get the unique host key (address)."""
         return self._address
-    
+
     @property
     def timestamp(self):
         """Get the time of the last host update."""
         return self._timestamp
-    
+
     @property
     def name(self):
         """Get the host computer name."""

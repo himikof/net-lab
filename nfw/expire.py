@@ -15,7 +15,7 @@ _log = logging.getLogger(__name__)
 
 class AbstractExpiringDict(MutableMapping, object):
     __metaclass__ = ABCMeta
-    
+
     def __init__(self, _dict=None, _reactor=None, **kwargs):
         if _reactor is None:
             from twisted.internet import reactor as _reactor
@@ -26,7 +26,7 @@ class AbstractExpiringDict(MutableMapping, object):
             self.update(_dict)
         if len(kwargs):
             self.update(kwargs)
-    
+
     @abstractmethod
     def expire(self, key):
         '''
@@ -45,7 +45,7 @@ class AbstractExpiringDict(MutableMapping, object):
         @return: entry TTL in seconds
         '''
         pass
-    
+
     @inlineCallbacks
     def _do_expire(self, key):
         _log.info("_do_expire")
@@ -54,19 +54,19 @@ class AbstractExpiringDict(MutableMapping, object):
             del self.data[key]
         else:
             self[key] = result
-    
+
     def __contains__(self, key):
         return key in self.data
-    
+
     def __len__(self):
         return len(self.data)
-    
+
     def __iter__(self):
         return iter(self.data)
-    
+
     def __getitem__(self, key):
         return self.data[key][0]
-    
+
     def __setitem__(self, key, value):
         if key in self:
             del self[key]
@@ -74,11 +74,11 @@ class AbstractExpiringDict(MutableMapping, object):
         ttl = self.ttl(key)
         expireD = self.reactor.callLater(ttl, self._do_expire, key)
         self.data[key] = (value, expireD)
-        
+
     def __delitem__(self, key):
         _, expireD = self.data[key]
         expireD.cancel()
         del self.data[key]
-        
+
     def __repr__(self):
         return '<{0}: {1}>'.format(type(self), dict(self))

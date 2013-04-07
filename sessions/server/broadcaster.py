@@ -42,21 +42,21 @@ class PeerList(AbstractExpiringDict):
     def expire(self, key):
         _log.info('Expiring %s', key)
         pass
-    
+
     def ttl(self, key):
         return TIMEOUT
-    
+
     def output(self):
         print '====================='
         for p in self.values():
             print p
-            
+
     def jsonData(self):
         return [p.data() for p in self.values()]
 
 
 class Broadcaster(StatefulDatagramProtocol):
-    
+
     def __init__(self, host, port):
         super(Broadcaster, self).__init__()
         self.host = host
@@ -67,7 +67,7 @@ class Broadcaster(StatefulDatagramProtocol):
         # FIXME: How to tell Twisted to set it?
         self.transport.socket.setsockopt(socket.SOL_SOCKET,
                                          socket.SO_BROADCAST, 1)
-    
+
     def sendDatagram(self):
         "Send DISCOVER_REQ"
         self.writeUInt8(0x00)

@@ -26,12 +26,12 @@ class Session(object):
         self._source = source
         self._destination = destination
         self._validUntil = validUntil
-        
+
     @property
     def key(self):
         """Get the unique session key."""
         return self._key
-    
+
     def binaryKey(self):
         # TODO: check specification
         return "{0}${1}".format(self._key.server, self._key.uuid.bytes)
@@ -40,7 +40,7 @@ class Session(object):
     def timestamp(self):
         """Get the time of the last session update."""
         return self._timestamp
-    
+
     @property
     def source(self):
         """Get the session source address."""
@@ -55,7 +55,7 @@ class Session(object):
     def validUntil(self):
         """Get the session expiration time."""
         return self._validUntil
-    
+
     def prolong(self, timestamp, newValidUntil):
         if timestamp <= self.timestamp:
             raise ValueError("Time stamp can only be incremented")

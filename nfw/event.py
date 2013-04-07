@@ -10,7 +10,7 @@ from twisted.internet.defer import inlineCallbacks, Deferred
 class Event(object):
     def __init__(self):
         self.subscribers = set()
-        
+
     def subscribe(self, callback, *args, **kwargs):
         subscription = partial(callback, *args, **kwargs)
         self.subscribers.add(subscription)
@@ -18,12 +18,12 @@ class Event(object):
 
     def unsubscibe(self, handle):
         self.subscribers.remove(handle)
-    
+
     def fire(self, *args, **kwargs):
         subscribers = list(self.subscribers)
         for callback in subscribers:
             callback(*args, **kwargs)
-    
+
     @inlineCallbacks
     def waitFor0(self):
         d = Deferred()

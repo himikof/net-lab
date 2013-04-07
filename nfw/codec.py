@@ -40,11 +40,13 @@ class ReaderMixin(object):
     def readBinary(self, sizeReader):
         size = yield sizeReader()
         data = yield self.readBytes(size)
+        #_log.debug("readBinary: %r", HexBytes(data))
         defer.returnValue(data)
-    
+
     @inlineCallbacks
     def readString(self, sizeReader, encoding='utf8'):
         data = yield self.readBinary(sizeReader)
+
         defer.returnValue(data.decode(encoding))
 
     def readBinary8(self):
@@ -52,10 +54,10 @@ class ReaderMixin(object):
 
     def readBinary16(self):
         return self.readBinary(self.readUInt16)
-    
+
     def readString8(self, encoding='utf8'):
         return self.readString(self.readUInt8, encoding)
-    
+
     def readString16(self, encoding='utf8'):
         return self.readString(self.readUInt16, encoding)
 
@@ -69,21 +71,21 @@ class WriterMixin(object):
 
     def writeUInt16(self, number):
         self.writePacked('!H', number)
-    
+
     def writeUInt32(self, number):
         self.writePacked('!I', number)
-        
+
     def writeBinary(self, sizeWriter, data):
         sizeWriter(len(data))
         self.writeBytes(data)
-        
+
     def writeBoolean(self, boolean):
         value = 0 if boolean else 1
         self.writePacked('!B', value)
 
     def writeString(self, sizeWriter, string, encoding='utf8'):
         self.writeBinary(sizeWriter, string.encode(encoding))
-        
+
     def writeBinary8(self, data):
         self.writeBinary(self.writeUInt8, data)
 
@@ -92,6 +94,6 @@ class WriterMixin(object):
 
     def writeString8(self, string, encoding='utf8'):
         self.writeString(self.writeUInt8, string, encoding)
-    
+
     def writeString16(self, string, encoding='utf8'):
         self.writeString(self.writeUInt16, string, encoding)

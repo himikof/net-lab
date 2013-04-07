@@ -29,7 +29,7 @@ class SessionList(AbstractExpiringDict):
             # Reschedule
             return s
         return None
-    
+
     def ttl(self, sessionKey):
         _log.debug("TTL: %s, %s, %s", self[sessionKey].validUntil, time.time(),
          self[sessionKey].validUntil - time.time())

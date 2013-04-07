@@ -36,7 +36,7 @@ class HostDB(object):
             raise DatabaseException("Bad computer name {0} "
                                     "for host {1}".format(cname, h))
         return h
-    
+
     def queryHost(self, address):
         if address not in self.hosts:
             raise DatabaseException("Unknown host {0}".format(address))
