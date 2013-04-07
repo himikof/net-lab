@@ -88,7 +88,7 @@ class Broadcaster(StatefulDatagramProtocol):
             port = yield self.readUInt16()
             if host == self.host and port == self.port:
                 return
-            _log.debug('Saw server %s', (host, port, timestamp))
+            #_log.debug('Saw server %s', (host, port, timestamp))
             peer = Peer(host, port, timestamp)
             peerSeen.fire(peer)
         else:

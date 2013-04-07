@@ -7,20 +7,26 @@ Created on 10.11.2012
 import logging
 import time
 
+from nfw.event import Event
+
 from sessions.server.host import Host
 from sessions.server.common import DatabaseException
 from sessions.server.replication.merger import Merger
+
+import sessions.server.ServerReplication_pb2 as pb2
 
 _log = logging.getLogger(__name__)
 
 class HostDB(object):
     def __init__(self):
         self.hosts = {}
+        self.updated = Event()
 
     def validateHost(self, address, cname):
         if address not in self.hosts:
             # Remember invalid hosts anyway, to ease administration
             self.hosts[address] = Host(address, time.time(), cname, False)
+            self.updated.fire([address])
             raise DatabaseException("Unknown host {0}, "
                                     "remembering".format(address))
         h = self.hosts[address]
@@ -39,22 +45,45 @@ class HostDB(object):
             raise DatabaseException("Forbidden host {0}".format(h))
         return h
 
-    def readKey(self, key):
-        return key.address
-
-    def merge(self, key, data):
-        timestamp = data.timestamp / 1000.0
-        if key not in self.hosts:
-            self.hosts[key] = Host(key, timestamp, data.name, data.valid)
-            _log.debug("Importing host: %s", self.hosts[key])
-        else:
-            if data.HasField('name'):
-                self.hosts[key].setName(timestamp, data.name)
-            if data.HasField('valid'):
-                self.hosts[key].setAllowed(timestamp, data.valid)
-
     def merger(self):
-        return Merger(self.hosts, self.readKey, self.merge)
+        return HostDBMerger(self)
+
+
+class HostDBMerger(Merger):
+    def __init__(self, db):
+        super(HostDBMerger, self).__init__()
+        self.db = db
+        self.db.updated.subscribe(self.updated.fire)
+
+    @property
+    def mapping(self):
+        return self.db.hosts
+
+    def readKey(self, keyPb):
+        return keyPb.address
+
+    def dumpValue(self, key):
+        pbKey = pb2.HostKey()
+        pbKey.address = key
+        value = self.mapping[key]
+        message = pb2.Host()
+        message.key = pbKey
+        message.timestamp = value.timestamp
+        message.name = value.name
+        message.valid = value.isAllowed
+        return message
+
+    def merge(self, key, dataPb):
+        timestamp = dataPb.timestamp / 1000.0
+        if key not in self.mapping:
+            self.mapping[key] = Host(key, timestamp, dataPb.name, dataPb.valid)
+            _log.debug("Importing host: %s", self.mapping[key])
+        else:
+            if dataPb.HasField('name'):
+                self.mapping[key].setName(timestamp, dataPb.name)
+            if dataPb.HasField('valid'):
+                self.mapping[key].setAllowed(timestamp, dataPb.valid)
+
 
 db = None
 

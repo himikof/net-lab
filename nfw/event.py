@@ -20,7 +20,8 @@ class Event(object):
         self.subscribers.remove(handle)
     
     def fire(self, *args, **kwargs):
-        for callback in self.subscribers:
+        subscribers = list(self.subscribers)
+        for callback in subscribers:
             callback(*args, **kwargs)
     
     @inlineCallbacks

@@ -112,7 +112,7 @@ class StatefulProtocol(StateMixin, BufferedProtocol):
         return defer.Deferred()
 
     def protocolError(self, failure):
-        _log.info('protocolError')
+        _log.info('protocolError:' + str(failure))
         if not failure.check('twisted.python.failure.DefaultException'):
             #import pdb; pdb.set_trace()
             txlog.err(failure)
@@ -199,9 +199,9 @@ class StatefulDatagramProtocol(WriterMixin, ReaderMixin, StateMixin,
         struct.pack_into(format_, self.writeBuffer, offset, *args)
 
     def send(self, addr=None):
-        if _log.isEnabledFor(logging.DEBUG):
-            s = str(self.writeBuffer).encode('string_escape')
-            _log.debug('Sending %s', s)
+        #if _log.isEnabledFor(logging.DEBUG):
+        #    s = str(self.writeBuffer).encode('string_escape')
+        #    _log.debug('Sending %s', s)
         if addr is None:
             self.transport.write(self.writeBuffer)
         else:

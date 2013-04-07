@@ -9,6 +9,7 @@ import time
 import uuid
 
 from nfw.expire import AbstractExpiringDict
+from nfw.event import Event
 
 from sessions.server.session import Session, SessionKey
 from sessions.server.common import DatabaseException
@@ -39,14 +40,16 @@ class SessionDB(object):
         self.serverId = serverId
         self.sessionDuration = sessionDuration
         self.sessions = SessionList()
-    
+        self.updated = Event()
+
     def requestSession(self, source, destination):
         key = SessionKey(server=self.serverId, uuid=uuid.uuid4())
         now = time.time()
         s = Session(key, now, source, destination, now + self.sessionDuration)
         self.sessions[key] = s
+        self.updated.fire([key])
         return s
-    
+
     def validateSession(self, sessionKey, destination):
         try:
             s = self.sessions[sessionKey]
@@ -75,8 +78,48 @@ class SessionDB(object):
                 self.sessions[key].prolong(timestamp, validUntil)
 
     def merger(self):
-        return Merger(self.sessions, self.readKey, self.merge)
+        return SessionDBMerger(self)
 
+
+class SessionDBMerger(Merger):
+    def __init__(self, db):
+        super(SessionDBMerger, self).__init__()
+        self.db = db
+        self.db.updated.subscribe(self.updated.fire)
+
+    @property
+    def mapping(self):
+        return self.db.sessions
+
+    def readKey(self, keyPb):
+        return SessionKey(server=keyPb.serverId,
+                          uuid=uuid.UUID(keyPb.sessionId))
+
+    def dumpValue(self, key):
+        pbKey = pb2.SessionKey()
+        pbKey.serverId = key.server
+        pbKey.sessionId = key.uuid.bytes
+        value = self.mapping[key]
+        message = pb2.Session()
+        message.key = pbKey
+        message.timestamp = value.timestamp
+        message.sessionSource = value.source
+        message.sessionDest = value.destination
+        message.validUntil = value.validUntil
+        return message
+
+    def merge(self, key, dataPb):
+        timestamp = dataPb.timestamp / 1000.0
+        validUntil = dataPb.validUntil / 1000.0
+        if key not in self.mapping:
+            session = Session(key, timestamp,
+                              dataPb.sessionSource, dataPb.sessionDest,
+                              validUntil)
+            _log.debug("Importing session: %s", session)
+            self.mapping[key] = session
+        else:
+            if data.HasField('validUntil'):
+                self.mapping[key].prolong(timestamp, validUntil)
 
 db = None
 

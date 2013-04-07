@@ -5,9 +5,14 @@ Created on 08.11.2012
 '''
 
 import struct
+import logging
 
 from twisted.internet import defer
 from twisted.internet.defer import inlineCallbacks
+
+from nfw.util import HexBytes
+
+_log = logging.getLogger(__name__)
 
 class ReaderMixin(object):
     @inlineCallbacks
@@ -83,7 +88,7 @@ class WriterMixin(object):
         self.writeBinary(self.writeUInt8, data)
 
     def writeBinary16(self, data):
-        self.writeBinary(self.writeUInt8, data)
+        self.writeBinary(self.writeUInt16, data)
 
     def writeString8(self, string, encoding='utf8'):
         self.writeString(self.writeUInt8, string, encoding)

@@ -27,6 +27,7 @@ class ReplicationProtocol(SignalingMixin, StatefulProtocol):
         self._remoteServerId = remoteServerId
         self._remoteServerIdD = Deferred()
         self.onUpdate = Event()
+        self.onListRequest = Event()
         if self._remoteServerId:
             self._remoteServerIdD.callback(self._remoteServerId)
 
@@ -45,7 +46,18 @@ class ReplicationProtocol(SignalingMixin, StatefulProtocol):
     @timeout()
     def list(self):
         self.writeUInt8(0xF0)
+        keys = pb2.List()
+        data = keys.SerializeToString()
+        self.writeBinary16(data)
         return self.onUpdate.waitFor1()
+
+    def sendUpdates(self, (sessionUpdates, hostUpdates)):
+        updatesList = pb2.List()
+        updatesList.hosts.extend(hostUpdates)
+        updatesList.sessions.extend(sessionUpdates)
+        data = updatesList.SerializeToString()
+        self.writeUInt8(0xF1)
+        self.writeBinary16(data)
 
     @inlineCallbacks
     def stateMachine(self):
@@ -56,6 +68,10 @@ class ReplicationProtocol(SignalingMixin, StatefulProtocol):
         command = yield self.readUInt8()
         if command == 0xF0:
             _log.info("got LIST_REQUEST")
+            data = yield self.readBinary16()
+            updates = pb2.List()
+            updates.ParseFromString(str(data))
+            self.onListRequest.fire((updates.sessions, updates.hosts))
             # TODO: implement
         elif command == 0xF1:
             _log.info("got LIST_UPDATES")
@@ -63,7 +79,6 @@ class ReplicationProtocol(SignalingMixin, StatefulProtocol):
             updates = pb2.List()
             updates.ParseFromString(str(data))
             self.onUpdate.fire((updates.sessions, updates.hosts))
-            # TODO: implement
         else:
             raise RuntimeError('Bad command')
 

@@ -15,6 +15,7 @@ from nfw.reconnect import PersistentClientService
 from sessions.server import broadcaster
 from sessions.server import sessiondb, hostdb
 from sessions.server.replication.factory import ClientFactory
+from sessions.server.ServerReplication_pb2 import List
 
 from twisted.internet import reactor
 from twisted.internet.endpoints import TCP4ClientEndpoint
@@ -109,6 +110,7 @@ class Replicator(object):
                 del self.peers[serverId]
         protocol.disconnectEvent.subscribe(onDisconnect)
         protocol.onUpdate.subscribe(self.processUpdates)
+        protocol.onListRequest.subscribe(self.processList)
         self.refresh(protocol)
 
     def addIncomingPeer(self, peer, protocol):
@@ -123,12 +125,14 @@ class Replicator(object):
 
     @inlineCallbacks
     def refresh(self, protocol):
-        _log.info("Ignoring refresh request for now...")
-        return
+        _log.info("Sending refresh request now...")
+        #return
         yield protocol.list()
 
     def sendUpdates(self, updates):
-        pass
+        for ps in self.peers.itervalues():
+            chosen_one = next(iter(ps))
+            chosen_one.sendUpdates(updates)
 
     def processUpdates(self, updates):
         _log.debug("Processing updates...")
@@ -136,6 +140,13 @@ class Replicator(object):
         sessionUpdates = self.sessionMerger.process(sessionUpdates)
         hostUpdates = self.hostMerger.process(hostUpdates)
         self.sendUpdates((sessionUpdates, hostUpdates))
+
+    def processList(self, protocol, keys):
+        _log.debug("Processing list request...")
+        (sessionKeys, hostKeys) = keys
+        sessionUpdates = self.sessionMerger.list(sessionKeys)
+        hostUpdates = self.hostMerger.list(hostKeys)
+        protocol.sendUpdates((sessionUpdates, hostUpdates))
 
     @inlineCallbacks
     def connectToPeer(self, peer):
