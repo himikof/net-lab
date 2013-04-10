@@ -5,6 +5,7 @@ Created on 10.11.2012
 '''
 
 from functools import partial
+from twisted.internet import defer
 from twisted.internet.defer import inlineCallbacks, Deferred
 
 class Event(object):
@@ -28,12 +29,14 @@ class Event(object):
     def waitFor0(self):
         d = Deferred()
         s = self.subscribe(d.callback, None)
-        yield d
+        res = yield d
         self.unsubscibe(s)
+        defer.returnValue(res)
 
     @inlineCallbacks
     def waitFor1(self):
         d = Deferred()
         s = self.subscribe(d.callback)
-        yield d
+        res = yield d
         self.unsubscibe(s)
+        defer.returnValue(res)

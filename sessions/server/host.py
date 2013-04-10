@@ -36,14 +36,14 @@ class Host(object):
         return self._allowed
 
     def setAllowed(self, timestamp, isAllowed):
-        if timestamp < self.timestamp:
-            raise ValueError("Time stamp can only be incremented")
+        #if timestamp < self.timestamp:
+        #    raise ValueError("Time stamp can only be incremented")
         self._timestamp = timestamp
         self._allowed = isAllowed
 
     def setName(self, timestamp, newName):
-        if timestamp < self.timestamp:
-            raise ValueError("Time stamp can only be incremented")
+        #if timestamp < self.timestamp:
+        #    raise ValueError("Time stamp can only be incremented")
         self._timestamp = timestamp
         self._cname = newName
 

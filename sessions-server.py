@@ -29,7 +29,7 @@ if __name__ == '__main__':
     observer = txlog.PythonLoggingObserver()
     txlog.startLoggingWithObserver(observer.emit, setStdout=0)
     serverId = "ofitserov"
-    sessionPort = 9999
+    sessionPort = 9950
     broadcaster.setup(sessionPort)
     hostdb.setup()
     sessiondb.setup(serverId)

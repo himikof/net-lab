@@ -39,6 +39,7 @@ class Merger(object):
 
     def process(self, updates):
         _log.debug("Merging %s updates", len(updates))
+        #_log.debug("Merging %s updates", updates)
         merged = []
         for update in updates:
             key = self.readKey(update.key)
@@ -51,6 +52,8 @@ class Merger(object):
                 if remove:
                     _log.debug("Removing object: " + str(key))
                     del self.mapping[key]
+                else:
+                    self.merge(key, update)
             else:
                 self.merge(key, update)
             merged.append(update)

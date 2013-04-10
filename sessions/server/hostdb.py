@@ -25,7 +25,7 @@ class HostDB(object):
     def validateHost(self, address, cname):
         if address not in self.hosts:
             # Remember invalid hosts anyway, to ease administration
-            self.hosts[address] = Host(address, time.time(), cname, False)
+            self.hosts[address] = Host(address, time.time(), cname, True)
             self.updated.fire([address])
             raise DatabaseException("Unknown host {0}, "
                                     "remembering".format(address))
@@ -53,7 +53,10 @@ class HostDBMerger(Merger):
     def __init__(self, db):
         super(HostDBMerger, self).__init__()
         self.db = db
-        self.db.updated.subscribe(self.updated.fire)
+        self.db.updated.subscribe(self.update)
+
+    def update(self, keys):
+        self.updated.fire([self.dumpValue(key) for key in keys])
 
     @property
     def mapping(self):
@@ -63,12 +66,10 @@ class HostDBMerger(Merger):
         return keyPb.address
 
     def dumpValue(self, key):
-        pbKey = pb2.HostKey()
-        pbKey.address = key
         value = self.mapping[key]
         message = pb2.Host()
-        message.key = pbKey
-        message.timestamp = value.timestamp
+        message.key.address = key
+        message.timestamp = long(value.timestamp * 1000)
         message.name = value.name
         message.valid = value.isAllowed
         return message
@@ -79,9 +80,13 @@ class HostDBMerger(Merger):
             self.mapping[key] = Host(key, timestamp, dataPb.name, dataPb.valid)
             _log.debug("Importing host: %s", self.mapping[key])
         else:
-            if dataPb.HasField('name'):
-                self.mapping[key].setName(timestamp, dataPb.name)
+            #if dataPb.HasField('name'):
+            #    _log.debug("Setting host %s ts=%s name=%s", key, timestamp,
+            #               dataPb.name)
+            #    self.mapping[key].setName(timestamp, dataPb.name)
             if dataPb.HasField('valid'):
+                _log.debug("Setting host %s ts=%s isAllowed=%s", key, 
+                           timestamp, dataPb.valid)
                 self.mapping[key].setAllowed(timestamp, dataPb.valid)
 
 

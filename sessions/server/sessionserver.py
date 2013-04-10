@@ -16,6 +16,8 @@ from nfw.protocol import StatefulSwitchingProtocol
 from sessions.server.session import parseKey
 from sessions.server import hostdb, sessiondb
 from sessions.server.replication import factory as rf
+from sessions.server.replication import replicator
+from sessions.server.common import DatabaseException
 
 _log = logging.getLogger(__name__)
 
@@ -28,7 +30,7 @@ class ServerProtocol(StatefulSwitchingProtocol):
 
     @inlineCallbacks
     def stateMachine(self):
-        _log.info("ENTERING SM: %s", self.transport.getPeer())
+        _log.debug("ENTERING SM: %s", self.transport.getPeer())
         command = yield self.readUInt8()
         #import pdb; pdb.set_trace()
         if command == 0x00:
@@ -42,8 +44,8 @@ class ServerProtocol(StatefulSwitchingProtocol):
                 source = self.hostdb.validateHost(src_ip, src_cname)
                 destination = self.hostdb.queryHost(dest_ip)
                 session = self.sessiondb.requestSession(source, destination)
-            except Exception as e:
-                _log.error(e)
+            except Exception:
+                _log.error("Error", exc_info=1)
                 _log.info("sending SESSION_REJ")
                 self.writeUInt8(0x01)
                 self.writeString8(dest_ip)
@@ -59,9 +61,17 @@ class ServerProtocol(StatefulSwitchingProtocol):
             dest_cname = yield self.readString8()
             try:
                 destination = self.hostdb.validateHost(dest_ip, dest_cname)
-                sessionKey = parseKey(sid)
-                self.sessiondb.validateSession(sessionKey, destination)
+                sessionKey = parseKey(str(sid))
+                try:
+                    self.sessiondb.validateSession(sessionKey, destination)
+                except DatabaseException:
+                    if sessionKey.server == self.sessiondb.serverId:
+                        raise
+                    _log.info("Retrying with refresh...")
+                    yield replicator.replicator.refreshServer(sessionKey.server)
+                    self.sessiondb.validateSession(sessionKey, destination)
             except Exception:
+                _log.error("Error", exc_info=1)
                 _log.info("sending SESSION_FAIL")
                 self.writeUInt8(0x03)
                 self.writeBinary8(sid)
@@ -81,7 +91,7 @@ class ServerProtocol(StatefulSwitchingProtocol):
             #_log.info("buffer: %s", self.buffer.requests)
             #import pdb; pdb.set_trace()
         else:
-            import pdb; pdb.set_trace()
+            #import pdb; pdb.set_trace()
             raise RuntimeError('Bad command')
 
 

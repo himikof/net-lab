@@ -31,13 +31,15 @@ class Buffer(object):
             pass
 
     def clear(self):
-        for deferred, _ in self.requests:
-            #import pdb; pdb.set_trace()
-            @defer.inlineCallbacks
-            def capture():
+        if self.requests:
+            try:
                 raise BufferClearedException('Buffer cleared')
-            #capture().chainDeferred(deferred)
-            deferred.errback(Failure('Buffer cleared'))
+            except Exception:
+                failure = Failure()
+            
+        for deferred, _ in self.requests:
+            deferred.errback(failure)
+            
         self.requests.clear()
         self.data.clear()
 

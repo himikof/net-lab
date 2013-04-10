@@ -59,13 +59,19 @@ class OutPeerList(dict, object):
         factory = ClientFactory()
         def _onConnectionLost(reason):
             self.peerConnectionLost(peer)
-        def _onConnectionMade():
-            self.expirations.pop(key).cancel()
+        def _onConnectionMade(protocol):
+            try:
+                self.expirations.pop(key).cancel()
+            except KeyError:
+                pass
             if self.connectionMadeCallback:
                 self.connectionMadeCallback()
+            _log.info('Connected to peer %s', key)
+            return protocol
         service = PersistentClientService(
              peer.endpoint(), factory, reactor,
-             connectionLostCallback=_onConnectionLost)
+             connectionLostCallback=_onConnectionLost,
+             connectionMadeCallback=_onConnectionMade)
         self[key] = service
         service.startService()
         return service.connectedProtocol()
@@ -73,6 +79,7 @@ class OutPeerList(dict, object):
     def _peerScheduleExpiration(self, peer):
         key = peer.key()
         def _expirePeer():
+            _log.info('Expiring peer %s', key)
             service = self.pop(key)
             service.stopService()
             del self.expirations[key]
@@ -94,6 +101,8 @@ class Replicator(object):
         self.peers = {}
         self.sessionMerger = sessiondb.db.merger()
         self.hostMerger = hostdb.db.merger()
+        self.sessionMerger.updated.subscribe(lambda x: self.sendUpdates((x,[])))
+        self.hostMerger.updated.subscribe(lambda x: self.sendUpdates(([],x)))
         #for peer in broadcaster.peerlist.values():
         #    self.updatePeer(peer)
         broadcaster.peerSeen.subscribe(self.connectToPeer)
@@ -123,13 +132,20 @@ class Replicator(object):
         self.inPeers[protocol] = peer
         self.registerProtocol(protocol)
 
-    @inlineCallbacks
+    #@inlineCallbacks
     def refresh(self, protocol):
         _log.info("Sending refresh request now...")
         #return
-        yield protocol.list()
+        return protocol.list()
+
+    @inlineCallbacks
+    def refreshServer(self, serverId):
+        chosen_one = next(iter(self.peers[serverId]))
+        updates = yield self.refresh(chosen_one)
+        self.processUpdates(updates)
 
     def sendUpdates(self, updates):
+        _log.debug("Sending updates...")
         for ps in self.peers.itervalues():
             chosen_one = next(iter(ps))
             chosen_one.sendUpdates(updates)

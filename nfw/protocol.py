@@ -96,6 +96,7 @@ class BufferedProtocol(BufferMixin, WriterMixin, ReaderMixin, object, Protocol):
 
     def connectionLost(self, reason):
         self.clearBuffer()
+        super(BufferedProtocol, self).connectionLost(reason)
 
     def readBytes(self, count):
         return self.buffer.pop(count)
@@ -112,15 +113,18 @@ class StatefulProtocol(StateMixin, BufferedProtocol):
         return defer.Deferred()
 
     def protocolError(self, failure):
+        if self.stateMachineStopped:
+            # This is a normal connectionLost process
+            return
         _log.info('protocolError:' + str(failure))
-        if not failure.check('twisted.python.failure.DefaultException'):
-            #import pdb; pdb.set_trace()
-            txlog.err(failure)
+        #if not failure.check('twisted.python.failure.DefaultException'):
+        #    #import pdb; pdb.set_trace()
+        #    txlog.err(failure)
         self.disconnect()
 
     def disconnect(self):
-        self.transport.loseConnection()
         self._stopSM()
+        self.transport.loseConnection()
 
     def connectionLost(self, reason):
         self._stopSM()

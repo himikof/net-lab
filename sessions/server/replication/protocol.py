@@ -48,6 +48,7 @@ class ReplicationProtocol(SignalingMixin, StatefulProtocol):
         self.writeUInt8(0xF0)
         keys = pb2.List()
         data = keys.SerializeToString()
+        _log.debug('Requesting LIST: data=%s', data)
         self.writeBinary16(data)
         return self.onUpdate.waitFor1()
 
@@ -59,10 +60,18 @@ class ReplicationProtocol(SignalingMixin, StatefulProtocol):
         self.writeUInt8(0xF1)
         self.writeBinary16(data)
 
-    @inlineCallbacks
-    def stateMachine(self):
+    def connectionLost(self, reason):
+        if not self.stateMachineStopped:
+            _log.info("Connection to %s lost", self.transport.getPeer())
+        super(ReplicationProtocol, self).connectionLost(reason)
+
+    def connectionMade(self):
         _log.info('Starting replication protocol on %s',
                   self.transport.getPeer())
+        super(ReplicationProtocol, self).connectionMade()
+
+    @inlineCallbacks
+    def stateMachine(self):
         if not self._remoteServerId:
             yield self.announce()
         command = yield self.readUInt8()

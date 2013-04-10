@@ -14,10 +14,11 @@ _log = logging.getLogger(__name__)
 SessionKey = namedtuple('SessionKey', ['uuid', 'server'])
 
 def parseKey(stringKey):
-    v = stringKey.split("$")
-    if len(v) != 2:
-        raise ValueError("Invalid key format")
-    return SessionKey(server=v[0], uuid=uuid.UUID(bytes=v[1]))
+    return SessionKey(server=stringKey[36:],  uuid=uuid.UUID(stringKey[:36]))
+    #v = stringKey.split("$")
+    #if len(v) != 2:
+    #    raise ValueError("Invalid key format")
+    #return SessionKey(server=v[0], uuid=uuid.UUID(bytes=v[1]))
 
 class Session(object):
     def __init__(self, key, timestamp, source, destination, validUntil):
@@ -34,7 +35,7 @@ class Session(object):
 
     def binaryKey(self):
         # TODO: check specification
-        return "{0}${1}".format(self._key.server, self._key.uuid.bytes)
+        return "{1}{0}".format(self._key.server, str(self._key.uuid))
 
     @property
     def timestamp(self):
@@ -57,10 +58,10 @@ class Session(object):
         return self._validUntil
 
     def prolong(self, timestamp, newValidUntil):
-        if timestamp <= self.timestamp:
-            raise ValueError("Time stamp can only be incremented")
-        if newValidUntil < self._validUntil:
-            raise ValueError("Expiration time can only be incremented")
+        #if timestamp <= self.timestamp:
+        #    raise ValueError("Time stamp can only be incremented")
+        #if newValidUntil < self._validUntil:
+        #    raise ValueError("Expiration time can only be incremented")
         self._timestamp = timestamp
         self._validUntil = newValidUntil
 

@@ -15,12 +15,14 @@ from sessions.server.session import Session, SessionKey
 from sessions.server.common import DatabaseException
 from sessions.server.replication.merger import Merger
 
+import sessions.server.ServerReplication_pb2 as pb2
+
 from twisted.internet.defer import inlineCallbacks
 
 _log = logging.getLogger(__name__)
 
 class SessionList(AbstractExpiringDict):
-    #@inlineCallbacks
+    # @inlineCallbacks
     def expire(self, sessionKey):
         _log.info('Trying to expire')
         s = self[sessionKey]
@@ -45,7 +47,9 @@ class SessionDB(object):
     def requestSession(self, source, destination):
         key = SessionKey(server=self.serverId, uuid=uuid.uuid4())
         now = time.time()
-        s = Session(key, now, source, destination, now + self.sessionDuration)
+        validUntil = now + self.sessionDuration
+        s = Session(key, now, source, destination.key, validUntil)
+        _log.debug("Created session {}".format(key))
         self.sessions[key] = s
         self.updated.fire([key])
         return s
@@ -55,27 +59,11 @@ class SessionDB(object):
             s = self.sessions[sessionKey]
         except KeyError:
             raise DatabaseException("Session {0} not found".format(sessionKey))
-        if s.destination != destination:
+        if s.destination != destination.key:
             raise DatabaseException("Requested destination "
                                     "{0} does not match session "
                                     "{1}".format(destination, s))
         return True
-
-    def readKey(self, key):
-        return SessionKey(server=key.serverId, uuid=uuid.UUID(key.sessionId))
-
-    def merge(self, key, data):
-        timestamp = data.timestamp / 1000.0
-        validUntil = data.validUntil / 1000.0
-        if key not in self.sessions:
-            session = Session(key, timestamp,
-                              data.sessionSource, data.sessionDest,
-                              validUntil)
-            _log.debug("Importing session: %s", session)
-            self.sessions[key] = session
-        else:
-            if data.HasField('validUntil'):
-                self.sessions[key].prolong(timestamp, validUntil)
 
     def merger(self):
         return SessionDBMerger(self)
@@ -85,7 +73,10 @@ class SessionDBMerger(Merger):
     def __init__(self, db):
         super(SessionDBMerger, self).__init__()
         self.db = db
-        self.db.updated.subscribe(self.updated.fire)
+        self.db.updated.subscribe(self.update)
+
+    def update(self, keys):
+        self.updated.fire([self.dumpValue(key) for key in keys])
 
     @property
     def mapping(self):
@@ -96,16 +87,14 @@ class SessionDBMerger(Merger):
                           uuid=uuid.UUID(keyPb.sessionId))
 
     def dumpValue(self, key):
-        pbKey = pb2.SessionKey()
-        pbKey.serverId = key.server
-        pbKey.sessionId = key.uuid.bytes
         value = self.mapping[key]
         message = pb2.Session()
-        message.key = pbKey
-        message.timestamp = value.timestamp
-        message.sessionSource = value.source
+        message.key.serverId = key.server
+        message.key.sessionId = str(key.uuid)
+        message.timestamp = long(value.timestamp * 1000)
+        message.sessionSource = value.source.key
         message.sessionDest = value.destination
-        message.validUntil = value.validUntil
+        message.validUntil = long(value.validUntil * 1000)
         return message
 
     def merge(self, key, dataPb):
@@ -118,7 +107,8 @@ class SessionDBMerger(Merger):
             _log.debug("Importing session: %s", session)
             self.mapping[key] = session
         else:
-            if data.HasField('validUntil'):
+            if dataPb.HasField('validUntil'):
+                _log.debug("Prolonging session: %s, %s", key, validUntil)
                 self.mapping[key].prolong(timestamp, validUntil)
 
 db = None

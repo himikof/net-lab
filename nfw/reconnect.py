@@ -22,16 +22,6 @@ class SignalingProtocol(SignalingMixin, object, ProtocolWrapper):
     def __getattr__(self, name):
         return getattr(self.wrappedProtocol, name)
         
-#    def connectionMade(self):
-#        ProtocolWrapper.connectionMade(self)
-#        if self.factory.onConnectionMade:
-#            self.factory.onConnectionMade()
-#
-#    def connectionLost(self, reason):
-#        ProtocolWrapper.connectionLost(self, reason)
-#        if self.factory.onConnectionLost:
-#            self.factory.onConnectionLost(reason)
-
 
 class SignalingFactory(WrappingFactory):
 #        def __init__(self, wrappedFactory, onConnectionMade,
@@ -41,11 +31,12 @@ class SignalingFactory(WrappingFactory):
 #            self.onConnectionLost = onConnectionLost
     
     protocol = SignalingProtocol
+    noisy = False
         
-    def buildProtocol(self, addr):
-        p = WrappingFactory.buildProtocol(self, addr)
-        _log.debug("Built SignalingProtocol: %s", p)
-        return p
+#    def buildProtocol(self, addr):
+#        p = WrappingFactory.buildProtocol(self, addr)
+#        _log.debug("Built SignalingProtocol: %s", p)
+#        return p
 
 
 class PersistentClientService(service.Service):
@@ -65,7 +56,8 @@ class PersistentClientService(service.Service):
     DEFAULT_DELAY = 1.0
 
     def __init__(self, endpoint, factory, reactor, 
-                 nextDelay=DEFAULT_DELAY, connectionLostCallback=None):
+                 nextDelay=DEFAULT_DELAY, connectionLostCallback=None,
+                 connectionMadeCallback=None):
         self.endpoint = endpoint
         self.factory = SignalingFactory(factory)
         self._reactor = reactor
@@ -74,6 +66,7 @@ class PersistentClientService(service.Service):
         self._currentProtocol = None
         self._subscribers = []
         self._connectionLostCallback = connectionLostCallback
+        self._connectionMadeCallback = connectionMadeCallback
 
     def startService(self):
         service.Service.startService(self)
@@ -88,22 +81,30 @@ class PersistentClientService(service.Service):
         if not self.running:
             return
         assert not self._dConnectingProtocol, self._dConnectingProtocol
-        #import pdb; pdb.set_trace()
         self._dConnectingProtocol = self.endpoint.connect(self.factory)
         (self._dConnectingProtocol
-            .addCallback(self._onConnect))
+            .addCallbacks(self._onConnected, self._tryConnect))
 
     def _onConnectionLost(self, reason):
         self._currentProtocol = None
         if self._connectionLostCallback:
             self._connectionLostCallback(reason)
+        self._tryConnect(None)
+            
+    def _tryConnect(self, failure):
+        _log.debug("Trying to reconnect to %s:%s", self.endpoint._host,
+                   self.endpoint._port)
+        self._dConnectingProtocol = None
         self._reactor.callLater(self._nextDelay, self._startConnection)
-        #self._startConnection()
 
-    def _onConnect(self, protocol):
+    def _onConnected(self, protocol):
+        #_log.debug("Connected to %s:%s", self.endpoint._host,
+        #           self.endpoint._port)
         protocol.disconnectEvent.subscribe(self._onConnectionLost)
         self._dConnectingProtocol = None
         self._currentProtocol = protocol
+        if self._connectionMadeCallback:
+            self._connectionMadeCallback(protocol)
         subscribers = self._subscribers
         self._subscribers = []
         for sub in subscribers:

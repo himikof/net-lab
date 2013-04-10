@@ -77,7 +77,7 @@ class WriterMixin(object):
 
     def writeBinary(self, sizeWriter, data):
         sizeWriter(len(data))
-        self.writeBytes(data)
+        self.writeBytes(str(data))
 
     def writeBoolean(self, boolean):
         value = 0 if boolean else 1
