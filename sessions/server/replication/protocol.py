@@ -80,10 +80,10 @@ class ReplicationProtocol(SignalingMixin, StatefulProtocol):
             data = yield self.readBinary16()
             updates = pb2.List()
             updates.ParseFromString(str(data))
-            self.onListRequest.fire((updates.sessions, updates.hosts))
+            self.onListRequest.fire(self, (updates.sessions, updates.hosts))
             # TODO: implement
         elif command == 0xF1:
-            _log.info("got LIST_UPDATES")
+            #_log.info("got LIST_UPDATES")
             data = yield self.readBinary16()
             updates = pb2.List()
             updates.ParseFromString(str(data))
